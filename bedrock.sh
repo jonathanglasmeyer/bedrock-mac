@@ -3,12 +3,12 @@
 #
 #   ./bedrock.sh                 Prefix bei Bedarf anlegen und Spiel starten
 #   ./bedrock.sh --setup-only    nur Prefix anlegen
-#   ./bedrock.sh --reset         Prefix dieser Version löschen (Welten bleiben NICHT erhalten)
+#   ./bedrock.sh --reset         Prefix dieser Version löschen (Welten liegen in $BEDROCK_HOME/data und bleiben)
 #
 # Pfade per Umgebung überschreibbar:
 #   BEDROCK_RUNTIME  entpacktes Runtime-Tarball  (Default ~/Games/bedrock-mac/runtime)
 #   BEDROCK_GAME     exportierte Spieldateien    (Default ~/Downloads/minecraft-bedrock)
-#   BEDROCK_HOME     Prefixe, Shader-Cache, Logs (Default ~/Games/bedrock-mac)
+#   BEDROCK_HOME     Prefixe, Welten (data/), Shader-Cache, Logs (Default ~/Games/bedrock-mac)
 #   WINEDEBUG        Wine-Logging (Default -all; zum Debuggen z. B. +loaddll,+module)
 set -euo pipefail
 
@@ -67,6 +67,17 @@ if [[ ! -f "$PREFIX/system.reg" ]]; then
     WINEDLLOVERRIDES="mscoree,mshtml=" "$WINE" wineboot -i >"$LOGDIR/wineboot.log" 2>&1
     "$RUNTIME/bin/wineserver" -w
 fi
+
+# Welten, Einstellungen und Skins liegen außerhalb der versionsgebundenen
+# Prefixe, damit sie ein Spiel-Update überleben.
+DATA="$BEDROCK_HOME/data"
+C_DATA="$PREFIX/drive_c/users/$USER/AppData/Roaming/Minecraft Bedrock"
+mkdir -p "$DATA" "$(dirname "$C_DATA")"
+if [[ -d "$C_DATA" && ! -L "$C_DATA" ]]; then
+    cp -Rn "$C_DATA/." "$DATA/" 2>/dev/null || true
+    rm -rf "$C_DATA"
+fi
+ln -sfn "$DATA" "$C_DATA"
 
 if [[ ! -f "$C_GAME/Minecraft.Windows.exe" ]] || \
    ! cmp -s "$GAME/BEDROCK-MAC-EXPORT.txt" "$C_GAME/BEDROCK-MAC-EXPORT.txt"; then
