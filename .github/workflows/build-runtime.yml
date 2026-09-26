@@ -21,19 +21,20 @@ permissions:
   contents: read
 
 env:
-  HOMEBREW_NO_AUTO_UPDATE: "1"
-  HOMEBREW_NO_INSTALL_CLEANUP: "1"
-  INTEL_BREW: /usr/local/bin/brew
-  INTEL_PREFIX: /usr/local
   WINEGDK_REF: ${{ inputs.winegdk_ref || 'b03ba49c4f326c36aa6930fbe6cf72841ef3738c' }}
   DXMT_TAG: ${{ inputs.dxmt_tag || 'v0.80' }}
+  LLVM_MINGW: llvm-mingw-20260908-ucrt-macos-universal
+  PORTS: /opt/local
   SRC: ${{ github.workspace }}/src
   STAGE: ${{ github.workspace }}/stage
   DIST: ${{ github.workspace }}/dist
 
 jobs:
   build:
-    runs-on: macos-15
+    # Wine for macOS is x86_64 (runs via Rosetta on Apple Silicon). Homebrew no
+    # longer supports Intel, so the build runs natively on an Intel runner with
+    # MacPorts for the host libraries and llvm-mingw for the PE side.
+    runs-on: macos-15-intel
     timeout-minutes: 300
 
     steps:
@@ -44,31 +45,31 @@ jobs:
           set -euxo pipefail
           uname -a; sw_vers; sysctl -n hw.ncpu; xcodebuild -version
 
-      - name: Install Rosetta and Intel Homebrew
+      - name: Install MacPorts
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          softwareupdate --install-rosetta --agree-to-license || true
-          if [ ! -x "$INTEL_BREW" ]; then
-            NONINTERACTIVE=1 arch -x86_64 /bin/bash -c \
-              "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-          arch -x86_64 "$INTEL_BREW" --version
+          cd "$RUNNER_TEMP"
+          gh release download -R macports/macports-base -p "MacPorts-*-15-Sequoia.pkg"
+          sudo installer -pkg MacPorts-*-15-Sequoia.pkg -target /
+          echo "$PORTS/bin" >> "$GITHUB_PATH"
+          echo "$PORTS/sbin" >> "$GITHUB_PATH"
 
-      - name: Install dependencies
+      - name: Install host libraries
         run: |
           set -euxo pipefail
-          arch -x86_64 "$INTEL_BREW" install gnutls freetype vulkan-headers vulkan-loader molten-vk
-          brew install llvm@21 lld@21 bison
-          {
-            echo "LLVM_BINDIR=$(brew --prefix llvm@21)/bin"
-            echo "VULKAN_HEADER_DIR=$(arch -x86_64 "$INTEL_BREW" --prefix vulkan-headers)"
-            echo "VULKAN_LOADER_DIR=$(arch -x86_64 "$INTEL_BREW" --prefix vulkan-loader)"
-          } >> "$GITHUB_ENV"
-          {
-            echo "$(brew --prefix llvm@21)/bin"
-            echo "$(brew --prefix lld@21)/bin"
-            echo "$(brew --prefix bison)/bin"
-          } >> "$GITHUB_PATH"
+          sudo port -N install gnutls freetype bison pkgconfig
+          port installed
+
+      - name: Install llvm-mingw
+        run: |
+          set -euxo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o llvm-mingw.tar.xz \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/$LLVM_MINGW.tar.xz"
+          tar -xf llvm-mingw.tar.xz
+          echo "$RUNNER_TEMP/$LLVM_MINGW/bin" >> "$GITHUB_PATH"
 
       - name: Fetch WineGDK
         run: |
@@ -85,25 +86,22 @@ jobs:
         working-directory: src/winegdk
         run: |
           set -euxo pipefail
-          export SDKROOT="$(xcrun --show-sdk-path)"
-          arch -x86_64 ./configure --prefix="$STAGE" \
-            CC=clang CXX=clang++ \
-            "CFLAGS=-O2 -I$INTEL_PREFIX/include -I$VULKAN_HEADER_DIR/include --target=x86_64-apple-darwin" \
-            "LDFLAGS=-L$VULKAN_LOADER_DIR/lib -L$INTEL_PREFIX/lib" \
-            "x86_64_CC=$LLVM_BINDIR/clang" "x86_64_CXX=$LLVM_BINDIR/clang++" \
-            "x86_64_CFLAGS=-O2" x86_64_LDFLAGS=-fuse-ld=lld \
+          x86_64-w64-mingw32-clang --version
+          export PKG_CONFIG_PATH="$PORTS/lib/pkgconfig"
+          ./configure --prefix="$STAGE" \
             --enable-archs=x86_64 \
-            --build=x86_64-apple-darwin --host=x86_64-apple-darwin \
-            FREETYPE_CFLAGS=-I$INTEL_PREFIX/include/freetype2 \
-            FREETYPE_LIBS=$INTEL_PREFIX/lib/libfreetype.6.dylib
+            --without-x \
+            CFLAGS="-O2 -I$PORTS/include" \
+            LDFLAGS="-L$PORTS/lib" \
+            x86_64_CFLAGS="-O2"
+          grep -E "SONAME_LIB(GNUTLS|FREETYPE)" include/config.h
 
       - name: Build and install WineGDK
         working-directory: src/winegdk
         run: |
           set -euxo pipefail
-          export SDKROOT="$(xcrun --show-sdk-path)"
-          arch -x86_64 make -j"$(sysctl -n hw.ncpu)"
-          arch -x86_64 make install
+          make -j"$(sysctl -n hw.ncpu)"
+          make install
 
       - name: Add DXMT (official, attested release)
         env:
@@ -126,14 +124,12 @@ jobs:
           cp "$ROOT"/x86_64-windows/*.dll "$STAGE/lib/wine/x86_64-windows/"
           cp "$ROOT"/x86_64-unix/*.so "$STAGE/lib/wine/x86_64-unix/"
 
-      - name: Bundle Homebrew dylibs
+      - name: Bundle host dylibs
         run: |
           set -euxo pipefail
           python3 scripts/bundle_dylibs.py "$STAGE" \
-            "$INTEL_PREFIX"/opt/gnutls/lib/libgnutls.30.dylib \
-            "$INTEL_PREFIX"/opt/freetype/lib/libfreetype.6.dylib \
-            "$INTEL_PREFIX"/opt/vulkan-loader/lib/libvulkan.1.dylib \
-            "$INTEL_PREFIX"/opt/molten-vk/lib/libMoltenVK.dylib
+            "$PORTS"/lib/libgnutls.30.dylib \
+            "$PORTS"/lib/libfreetype.6.dylib
 
       - name: Write build info
         run: |

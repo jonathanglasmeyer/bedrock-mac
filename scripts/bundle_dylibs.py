@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy Homebrew dylibs (and their Homebrew deps) into <stage>/lib and make
+"""Copy MacPorts/Homebrew dylibs (and their deps from the same prefix) into <stage>/lib and make
 them relocatable.
 
 Wine loads gnutls, freetype and vulkan via dlopen() by bare name, so the
@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 
-BREW_PREFIXES = ("/usr/local/", "/opt/homebrew/")
+BREW_PREFIXES = ("/opt/local/", "/usr/local/", "/opt/homebrew/")
 
 
 def deps(path):
@@ -58,7 +58,7 @@ def main():
         print(name)
         for d in deps(os.path.join(libdir, name)):
             if d.startswith(BREW_PREFIXES):
-                sys.exit(f"unresolved Homebrew reference in {name}: {d}")
+                sys.exit(f"unresolved package-manager reference in {name}: {d}")
 
 
 if __name__ == "__main__":
