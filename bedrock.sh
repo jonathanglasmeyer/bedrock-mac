@@ -88,6 +88,15 @@ if [[ ! -f "$C_GAME/Minecraft.Windows.exe" ]] || \
     rm -rf "$C_GAME/_gameinput"
 fi
 
+# Neuere Builds starten über den Windows-App-SDK-Bootstrapper, der unter Wine
+# mangels MSIX-Paketverwaltung scheitert. Der Stub meldet einfach Erfolg.
+STUB="$(cd "$(dirname "$0")" && pwd)/stubs/Microsoft.WindowsAppRuntime.Bootstrap.dll"
+if [[ -f "$C_GAME/Microsoft.WindowsAppRuntime.Bootstrap.dll" ]] && \
+   ! cmp -s "$STUB" "$C_GAME/Microsoft.WindowsAppRuntime.Bootstrap.dll"; then
+    say "ersetze den Windows-App-SDK-Bootstrapper durch einen Stub"
+    cp "$STUB" "$C_GAME/Microsoft.WindowsAppRuntime.Bootstrap.dll"
+fi
+
 if [[ -d "$GAME/_gameinput/x64" ]]; then
     if [[ ! -f "$C_GAMEINPUT/x64/GameInputRedist.dll" ]]; then
         say "richte GameInput aus dem Windows-Export ein"

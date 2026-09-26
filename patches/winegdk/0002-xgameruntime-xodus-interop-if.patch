@@ -1,0 +1,18 @@
+xgameruntime: Only talk to Xodus when XODUS_INTEROP is enabled.
+
+private.h defines XODUS_INTEROP as 0 and the other call sites use #if, but
+InitializeApiImplEx2 used #ifdef, so it always connected to the Xodus
+socket. Without a running Xodus service, XGameRuntimeInitialize failed and
+the game quit right after the "Could not load Xodus's service socket" box.
+
+--- a/dlls/xgameruntime/main.c
++++ b/dlls/xgameruntime/main.c
+@@ -173,7 +173,7 @@
+     //
+     HRESULT hr;
+ 
+-#ifdef XODUS_INTEROP
++#if XODUS_INTEROP
+     if ( !unixlib )
+     {
+         if ( FAILED( hr = LoadUnixLib() ) ) return hr;
