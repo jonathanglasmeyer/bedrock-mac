@@ -113,16 +113,22 @@ else
 fi
 
 if [[ -d "$GAME/_gameinput/x64" ]]; then
-    if [[ ! -f "$C_GAMEINPUT/x64/GameInputRedist.dll" ]]; then
+    # Die Maus geht nur mit Microsofts Redist; WineGDKs eingebautes gameinput.dll
+    # liefert unter Wine keine Maustasten. Das Spiel lädt die Redist nur, wenn
+    # RedistDir ohne abschließenden Backslash gesetzt ist und sie in system32 liegt.
+    if [[ ! -f "$PREFIX/drive_c/windows/system32/GameInputRedist.dll" ]]; then
         say "richte GameInput aus dem Windows-Export ein"
         mkdir -p "$C_GAMEINPUT"
         cp -R "$GAME/_gameinput/." "$C_GAMEINPUT/"
         rm -f "$C_GAMEINPUT/gameinput.reg"
+        cp "$C_GAMEINPUT/x64/GameInputRedist.dll" "$PREFIX/drive_c/windows/system32/"
         if [[ -f "$GAME/_gameinput/gameinput.reg" ]]; then
             "$WINE" regedit /S "Z:$(echo "$GAME/_gameinput/gameinput.reg" | tr / '\\')" >>"$LOGDIR/wineboot.log" 2>&1
         fi
-        "$WINE" reg add 'HKLM\SOFTWARE\Microsoft\GameInput' /v RedistDir /t REG_SZ \
-            /d 'C:\Program Files\Microsoft GameInput\x64\' /f >>"$LOGDIR/wineboot.log" 2>&1
+        for KEY in 'HKLM\SOFTWARE\Microsoft\GameInput' 'HKLM\SOFTWARE\Wow6432Node\Microsoft\GameInput'; do
+            "$WINE" reg add "$KEY" /v RedistDir /t REG_SZ \
+                /d 'C:\Program Files\Microsoft GameInput\x64' /f >>"$LOGDIR/wineboot.log" 2>&1
+        done
         SVC='HKLM\SYSTEM\CurrentControlSet\Services\GameInputRedistService'
         "$WINE" reg add "$SVC" /v ImagePath /t REG_EXPAND_SZ \
             /d 'C:\Program Files\Microsoft GameInput\x64\GameInputRedistService.exe' /f >>"$LOGDIR/wineboot.log" 2>&1
