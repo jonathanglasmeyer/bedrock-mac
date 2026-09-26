@@ -9,7 +9,16 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$HOME/Applications}"
 APP="$DEST/Minecraft Bedrock.app"
-GAME="${BEDROCK_GAME:-$HOME/Downloads/minecraft-bedrock}"
+HOME_DIR="${BEDROCK_HOME:-$HOME/Games/bedrock-mac}"
+GAME="${BEDROCK_GAME:-$HOME_DIR/game}"
+if [[ ! -d "$GAME" && -d "$HOME/Downloads/minecraft-bedrock" && ! -L "$HOME/Downloads/minecraft-bedrock" ]]; then
+    # Finder-Apps dürfen ~/Downloads nicht lesen (TCC): Export umziehen, Symlink
+    # zurücklassen, damit ./bedrock.sh im Terminal weiter den alten Pfad findet.
+    echo "==> verschiebe den Export nach $GAME"
+    mkdir -p "$(dirname "$GAME")"
+    mv "$HOME/Downloads/minecraft-bedrock" "$GAME"
+    ln -s "$GAME" "$HOME/Downloads/minecraft-bedrock"
+fi
 LOGDIR="${BEDROCK_HOME:-$HOME/Games/bedrock-mac}/logs"
 
 rm -rf "$APP"

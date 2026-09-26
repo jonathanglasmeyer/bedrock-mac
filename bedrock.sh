@@ -7,7 +7,7 @@
 #
 # Pfade per Umgebung überschreibbar:
 #   BEDROCK_RUNTIME  entpacktes Runtime-Tarball  (Default ~/Games/bedrock-mac/runtime)
-#   BEDROCK_GAME     exportierte Spieldateien    (Default ~/Downloads/minecraft-bedrock)
+#   BEDROCK_GAME     exportierte Spieldateien    (Default ~/Games/bedrock-mac/game, sonst ~/Downloads/minecraft-bedrock)
 #   BEDROCK_HOME     Prefixe, Welten (data/), Shader-Cache, Logs (Default ~/Games/bedrock-mac)
 #                    plus xgameruntime.dll.threading (native x64-xgameruntime.dll von Microsoft)
 #   WINEDEBUG        Wine-Logging (Default -all; zum Debuggen z. B. +loaddll,+module)
@@ -15,7 +15,13 @@ set -euo pipefail
 
 BEDROCK_HOME="${BEDROCK_HOME:-$HOME/Games/bedrock-mac}"
 RUNTIME="${BEDROCK_RUNTIME:-$BEDROCK_HOME/runtime}"
-GAME="${BEDROCK_GAME:-$HOME/Downloads/minecraft-bedrock}"
+# Apps aus dem Finder dürfen ~/Downloads nicht lesen (TCC), daher liegt der
+# Export bevorzugt in $BEDROCK_HOME/game.
+if [[ -z "${BEDROCK_GAME:-}" && -d "$BEDROCK_HOME/game" ]]; then
+    GAME="$BEDROCK_HOME/game"
+else
+    GAME="${BEDROCK_GAME:-$HOME/Downloads/minecraft-bedrock}"
+fi
 MODE="${1:-run}"
 
 die() { echo "Fehler: $*" >&2; exit 1; }
@@ -31,6 +37,8 @@ WINE="$RUNTIME/bin/wine"
 [[ -f "$GAME/Minecraft.Windows.exe" ]] || die "keine Spieldateien unter $GAME (windows/export-minecraft.ps1 ausführen)"
 [[ -f "$GAME/AppxManifest.xml" && -f "$GAME/MicrosoftGame.Config" ]] || \
     die "AppxManifest.xml oder MicrosoftGame.Config fehlt in $GAME, Export unvollständig"
+[[ -r "$GAME/Minecraft.Windows.exe" ]] && head -c 2 "$GAME/Minecraft.Windows.exe" >/dev/null 2>&1 || \
+    die "kein Lesezugriff auf $GAME (als App gestartet? Export nach ~/Games/bedrock-mac/game verschieben)"
 if [[ "$(head -c 2 "$GAME/Minecraft.Windows.exe")" != "MZ" ]]; then
     die "Minecraft.Windows.exe ist noch verschlüsselt, Export erneut ausführen"
 fi

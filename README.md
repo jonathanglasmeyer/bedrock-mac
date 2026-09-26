@@ -40,7 +40,7 @@ Das Skript bricht ab, wenn die exe noch verschlüsselt oder keine x64-Datei ist.
    mkdir -p ~/Games/bedrock-mac/runtime
    tar -xJf bedrock-mac-runtime-*.tar.xz -C ~/Games/bedrock-mac/runtime
    ```
-2. Spieldateien per Export-Skript nach `~/Downloads/minecraft-bedrock` holen (siehe oben).
+2. Spieldateien per Export-Skript nach `~/Downloads/minecraft-bedrock` holen (siehe oben). `scripts/make-app.sh` verschiebt sie nach `~/Games/bedrock-mac/game` und lässt einen Symlink zurück, weil aus dem Finder gestartete Apps `~/Downloads` nicht lesen dürfen.
 3. Microsofts native x64-`xgameruntime.dll` als `~/Games/bedrock-mac/xgameruntime.dll.threading` ablegen. WineGDK nutzt sie für XThreading, ohne sie stürzt das Spiel beim Laden ab. Auf einem x64-Windows liegt sie unter `C:\Windows\System32\xgameruntime.dll`. Auf Windows on ARM gibt es dort nur ARM64, dann aus dem x64-Paket "Gaming Services" (`Microsoft.GamingServices_8wekyb3d8bbwe`, z. B. über store.rg-adguard.net) die Datei `GamingServicesTcui-Package_*_x64.appx` und daraus `xgameruntime.dll` entpacken.
 4. Optional für Xbox-Login: einmal `./xbox-login.py`, Code im Browser eingeben. Der Refresh-Token landet in `~/Games/bedrock-mac/msa-refresh-token`, `bedrock.sh` trägt ihn in den Prefix ein. `./xbox-login.py --logout` meldet wieder ab.
 5. `./bedrock.sh`, oder einmal `scripts/make-app.sh` ausführen: Das legt `~/Applications/Minecraft Bedrock.app` an, die über Spotlight, Raycast oder das Dock startet (Fehler erscheinen als Dialog, Ausgabe in `logs/app.log`).
