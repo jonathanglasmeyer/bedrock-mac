@@ -15,7 +15,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/build-runtime.yml"
-      - "scripts/**"
+      - "scripts/bundle_dylibs.py"
       - "patches/**"
 
 permissions:
