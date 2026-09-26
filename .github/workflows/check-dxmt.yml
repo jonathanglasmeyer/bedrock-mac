@@ -1,0 +1,29 @@
+name: check-dxmt
+
+# Quick check that the pinned DXMT release can be fetched and its build
+# provenance verifies, without waiting for a full Wine build.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/check-dxmt.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and verify DXMT
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DXMT_TAG: v0.80
+        run: |
+          set -euxo pipefail
+          gh release view "$DXMT_TAG" -R 3Shain/dxmt --json assets --jq '.assets[] | "\(.name) \(.size)"'
+          gh release download "$DXMT_TAG" -R 3Shain/dxmt -p "dxmt-*.tar.gz"
+          TARBALL="$(ls dxmt-*.tar.gz | head -n1)"
+          gh attestation verify "$TARBALL" --repo 3Shain/dxmt
+          tar -tzf "$TARBALL"
