@@ -12,7 +12,7 @@ Bausteine, alle Open Source:
 
 1. **Runtime-Build** (dieses Repo, `build-runtime`-Workflow): baut WineGDK auf einem gepinnten Commit für x86_64 (läuft über Rosetta), legt die offiziellen, per Build-Provenance verifizierten DXMT-Binaries dazu und bündelt die Bibliotheken (gnutls, freetype) aus MacPorts. Gebaut wird auf einem Intel-Runner, weil Homebrew kein Intel mehr unterstützt; Wine für macOS ist ohnehin x86_64 und läuft auf Apple Silicon über Rosetta. Ergebnis ist ein `tar.xz` als Actions-Artifact, `share/bedrock-mac/BUILDINFO` nennt die exakten Quellen.
 2. **Spieldateien-Export** (`windows/export-minecraft.ps1`): kopiert die per Xbox-App installierte Version im Paketkontext, sodass Windows selbst die Klartextfassung liefert, prüft die exe (x64) und legt alles in einem Ordner ab. Funktioniert auf einem Windows-PC oder in einer Windows-11-VM in Parallels (Trial reicht, Minecraft ist dort ebenfalls die x64-Version).
-3. Startskript (Prefix, GameInput, Launch): folgt.
+3. **Startskript** (`bedrock.sh`): legt pro Spielversion einen Prefix an, klont die Spieldateien hinein, richtet GameInput aus dem Windows-Export ein und startet das Spiel mit DXMT. Noch ungetestet auf echter Hardware.
 4. Xodus-Provider für Xbox-Login: folgt.
 
 ## Runtime bauen
@@ -32,3 +32,15 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 Das Skript bricht ab, wenn die exe noch verschlüsselt oder keine x64-Datei ist.
+
+## Spielen
+
+1. Artifact aus dem letzten grünen `build-runtime`-Lauf laden und entpacken:
+   ```sh
+   mkdir -p ~/Games/bedrock-mac/runtime
+   tar -xJf bedrock-mac-runtime-*.tar.xz -C ~/Games/bedrock-mac/runtime
+   ```
+2. Spieldateien per Export-Skript nach `~/Downloads/minecraft-bedrock` holen (siehe oben).
+3. `./bedrock.sh`
+
+Logs landen unter `~/Games/bedrock-mac/logs/`. Für ausführliches Wine-Logging `WINEDEBUG=+loaddll,+module ./bedrock.sh`. Erstes Ziel ist Singleplayer und LAN ohne Xbox-Login; Vibrant Visuals und Login sind noch offen.

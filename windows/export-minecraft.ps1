@@ -87,6 +87,17 @@ if ($null -eq $machine) { throw "Die exe hat keinen MZ-Header, ist also noch ver
 if ($machine -ne 0x8664) { throw ("Die exe ist nicht x64 (PE-Machine 0x{0:X4}). bedrock-mac braucht die x64-Version." -f $machine) }
 Write-Host "  exe ok: x64, $([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB" -ForegroundColor Green
 
+# GameInput: Windows hat die Redist beim Spiel-Install schon eingerichtet.
+# Ordner und Registry-Schluessel mitnehmen, dann braucht der Mac kein msiexec.
+$gi = "C:\Program Files\Microsoft GameInput"
+if (Test-Path $gi) {
+    Write-Host "  GameInput-Redist gefunden, wird mit exportiert."
+    robocopy $gi (Join-Path $Staging "_gameinput") /E /R:1 /W:1 /NP /NFL /NDL | Out-Null
+    reg export "HKLM\SOFTWARE\Microsoft\GameInput" (Join-Path $Staging "_gameinput\gameinput.reg") /y | Out-Null
+} else {
+    Write-Host "  Keine GameInput-Redist unter $gi, der Mac nutzt dann die eingebaute von WineGDK." -ForegroundColor Yellow
+}
+
 @"
 package=$($pkg.PackageFullName)
 version=$($pkg.Version)

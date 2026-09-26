@@ -1,0 +1,110 @@
+#!/bin/bash
+# Startet Minecraft Bedrock (Windows/GDK) unter WineGDK + DXMT auf dem Mac.
+#
+#   ./bedrock.sh                 Prefix bei Bedarf anlegen und Spiel starten
+#   ./bedrock.sh --setup-only    nur Prefix anlegen
+#   ./bedrock.sh --reset         Prefix dieser Version löschen (Welten bleiben NICHT erhalten)
+#
+# Pfade per Umgebung überschreibbar:
+#   BEDROCK_RUNTIME  entpacktes Runtime-Tarball  (Default ~/Games/bedrock-mac/runtime)
+#   BEDROCK_GAME     exportierte Spieldateien    (Default ~/Downloads/minecraft-bedrock)
+#   BEDROCK_HOME     Prefixe, Shader-Cache, Logs (Default ~/Games/bedrock-mac)
+#   WINEDEBUG        Wine-Logging (Default -all; zum Debuggen z. B. +loaddll,+module)
+set -euo pipefail
+
+BEDROCK_HOME="${BEDROCK_HOME:-$HOME/Games/bedrock-mac}"
+RUNTIME="${BEDROCK_RUNTIME:-$BEDROCK_HOME/runtime}"
+GAME="${BEDROCK_GAME:-$HOME/Downloads/minecraft-bedrock}"
+MODE="${1:-run}"
+
+die() { echo "Fehler: $*" >&2; exit 1; }
+say() { echo "==> $*"; }
+
+# --- Voraussetzungen ---------------------------------------------------------
+[[ "$(uname -s)" == Darwin ]] || die "nur für macOS"
+if [[ "$(uname -m)" == arm64 ]] && ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+    die "Rosetta fehlt. Installieren mit: softwareupdate --install-rosetta --agree-to-license"
+fi
+WINE="$RUNTIME/bin/wine"
+[[ -x "$WINE" ]] || die "keine Runtime unter $RUNTIME (Artifact aus dem build-runtime-Workflow dort entpacken)"
+[[ -f "$GAME/Minecraft.Windows.exe" ]] || die "keine Spieldateien unter $GAME (windows/export-minecraft.ps1 ausführen)"
+[[ -f "$GAME/AppxManifest.xml" && -f "$GAME/MicrosoftGame.Config" ]] || \
+    die "AppxManifest.xml oder MicrosoftGame.Config fehlt in $GAME, Export unvollständig"
+if [[ "$(head -c 2 "$GAME/Minecraft.Windows.exe")" != "MZ" ]]; then
+    die "Minecraft.Windows.exe ist noch verschlüsselt, Export erneut ausführen"
+fi
+
+VERSION="$(sed -n 's/^version=//p' "$GAME/BEDROCK-MAC-EXPORT.txt" 2>/dev/null | tr -d '\r' || true)"
+VERSION="${VERSION:-unknown}"
+PREFIX="$BEDROCK_HOME/prefix-$VERSION"
+LOGDIR="$BEDROCK_HOME/logs"
+mkdir -p "$BEDROCK_HOME" "$LOGDIR" "$BEDROCK_HOME/shader-cache"
+
+if [[ "$MODE" == --reset ]]; then
+    say "lösche $PREFIX"
+    rm -rf "$PREFIX"
+    exit 0
+fi
+
+# Aus dem Browser geladene Runtime ist in Quarantäne; Gatekeeper würde jede Datei einzeln blocken.
+xattr -dr com.apple.quarantine "$RUNTIME" 2>/dev/null || true
+
+# --- Umgebung ----------------------------------------------------------------
+export WINEPREFIX="$PREFIX"
+export WINEDEBUG="${WINEDEBUG:--all}"
+# Wine lädt gnutls/freetype per dlopen über den Namen.
+export DYLD_FALLBACK_LIBRARY_PATH="$RUNTIME/lib:/usr/lib"
+export DXMT_SHADER_CACHE_PATH="$BEDROCK_HOME/shader-cache"
+# DXMT ersetzt d3d11/dxgi im Runtime-Verzeichnis, "builtin" heißt hier also DXMT.
+OVERRIDES="d3d11,dxgi,d3d10core,winemetal=b"
+
+C_GAME="$PREFIX/drive_c/Program Files/Minecraft Launcher"
+C_GAMEINPUT="$PREFIX/drive_c/Program Files/Microsoft GameInput"
+
+# --- Prefix einrichten -------------------------------------------------------
+if [[ ! -f "$PREFIX/system.reg" ]]; then
+    say "lege Prefix an: $PREFIX"
+    WINEDLLOVERRIDES="mscoree,mshtml=" "$WINE" wineboot -i >"$LOGDIR/wineboot.log" 2>&1
+    "$RUNTIME/bin/wineserver" -w
+fi
+
+if [[ ! -f "$C_GAME/Minecraft.Windows.exe" ]] || \
+   ! cmp -s "$GAME/BEDROCK-MAC-EXPORT.txt" "$C_GAME/BEDROCK-MAC-EXPORT.txt"; then
+    say "kopiere Spieldateien in den Prefix (APFS-Klon, kostet kaum Platz)"
+    rm -rf "$C_GAME"
+    mkdir -p "$(dirname "$C_GAME")"
+    cp -Rc "$GAME" "$C_GAME" 2>/dev/null || cp -R "$GAME" "$C_GAME"
+    rm -rf "$C_GAME/_gameinput"
+fi
+
+if [[ -d "$GAME/_gameinput/x64" ]]; then
+    if [[ ! -f "$C_GAMEINPUT/x64/GameInputRedist.dll" ]]; then
+        say "richte GameInput aus dem Windows-Export ein"
+        mkdir -p "$C_GAMEINPUT"
+        cp -R "$GAME/_gameinput/." "$C_GAMEINPUT/"
+        rm -f "$C_GAMEINPUT/gameinput.reg"
+        if [[ -f "$GAME/_gameinput/gameinput.reg" ]]; then
+            "$WINE" regedit /S "Z:$(echo "$GAME/_gameinput/gameinput.reg" | tr / '\\')" >>"$LOGDIR/wineboot.log" 2>&1
+        fi
+        "$WINE" reg add 'HKLM\SOFTWARE\Microsoft\GameInput' /v RedistDir /t REG_SZ \
+            /d 'C:\Program Files\Microsoft GameInput\x64\' /f >>"$LOGDIR/wineboot.log" 2>&1
+        SVC='HKLM\SYSTEM\CurrentControlSet\Services\GameInputRedistService'
+        "$WINE" reg add "$SVC" /v ImagePath /t REG_EXPAND_SZ \
+            /d 'C:\Program Files\Microsoft GameInput\x64\GameInputRedistService.exe' /f >>"$LOGDIR/wineboot.log" 2>&1
+        "$WINE" reg add "$SVC" /v Type /t REG_DWORD /d 16 /f >>"$LOGDIR/wineboot.log" 2>&1
+        "$WINE" reg add "$SVC" /v Start /t REG_DWORD /d 3 /f >>"$LOGDIR/wineboot.log" 2>&1
+        "$RUNTIME/bin/wineserver" -w
+    fi
+else
+    say "keine GameInput-Redist im Export, nutze die eingebaute von WineGDK"
+    OVERRIDES="$OVERRIDES;gameinput,GameInputRedist=b"
+fi
+
+[[ "$MODE" == --setup-only ]] && { say "Prefix fertig"; exit 0; }
+
+# --- Start -------------------------------------------------------------------
+export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}$OVERRIDES"
+LOG="$LOGDIR/minecraft-$(date +%Y%m%d-%H%M%S).log"
+say "starte Minecraft $VERSION (Log: $LOG)"
+cd "$C_GAME"
+exec "$WINE" 'C:\Program Files\Minecraft Launcher\Minecraft.Windows.exe' >"$LOG" 2>&1
