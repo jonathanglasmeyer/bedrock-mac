@@ -58,6 +58,9 @@ export DYLD_FALLBACK_LIBRARY_PATH="$RUNTIME/lib:/usr/lib"
 export DXMT_SHADER_CACHE_PATH="$BEDROCK_HOME/shader-cache"
 # DXMT ersetzt d3d11/dxgi im Runtime-Verzeichnis, "builtin" heißt hier also DXMT.
 OVERRIDES="d3d11,dxgi,d3d10core,winemetal=b"
+# Kein Wine-Mono/Gecko: Minecraft braucht weder .NET noch den HTML-Renderer, und
+# ohne das fragt Wine bei jedem Prefix-Update nach dem Download.
+export WINEDLLOVERRIDES="mscoree,mshtml=${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
 
 C_GAME="$PREFIX/drive_c/Program Files/Minecraft Launcher"
 C_GAMEINPUT="$PREFIX/drive_c/Program Files/Microsoft GameInput"
@@ -65,7 +68,7 @@ C_GAMEINPUT="$PREFIX/drive_c/Program Files/Microsoft GameInput"
 # --- Prefix einrichten -------------------------------------------------------
 if [[ ! -f "$PREFIX/system.reg" ]]; then
     say "lege Prefix an: $PREFIX"
-    WINEDLLOVERRIDES="mscoree,mshtml=" "$WINE" wineboot -i >"$LOGDIR/wineboot.log" 2>&1
+    "$WINE" wineboot -i >"$LOGDIR/wineboot.log" 2>&1
     "$RUNTIME/bin/wineserver" -w
 fi
 
