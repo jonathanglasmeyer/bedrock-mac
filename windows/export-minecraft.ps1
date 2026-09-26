@@ -13,12 +13,11 @@
   Mac-Ordner in Parallels) kopieren.
 
 .EXAMPLE
-  # In einer PowerShell als Administrator:
+  # In einer normalen PowerShell (keine Adminrechte noetig):
   Set-ExecutionPolicy -Scope Process Bypass
   .\export-minecraft.ps1
   .\export-minecraft.ps1 -Destination "\\Mac\Home\Downloads\minecraft-bedrock"
 #>
-#Requires -RunAsAdministrator
 param(
     [string]$Destination = "\\Mac\Home\Downloads\minecraft-bedrock",
     [string]$Staging = "$env:USERPROFILE\minecraft-export",
@@ -87,15 +86,31 @@ if ($null -eq $machine) { throw "Die exe hat keinen MZ-Header, ist also noch ver
 if ($machine -ne 0x8664) { throw ("Die exe ist nicht x64 (PE-Machine 0x{0:X4}). bedrock-mac braucht die x64-Version." -f $machine) }
 Write-Host "  exe ok: x64, $([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB" -ForegroundColor Green
 
-# GameInput: Windows hat die Redist beim Spiel-Install schon eingerichtet.
-# Ordner und Registry-Schluessel mitnehmen, dann braucht der Mac kein msiexec.
+# GameInput: Das Spiel bringt die Redist als MSI mit. Eine administrative
+# Installation (msiexec /a) entpackt nur, braucht keine Adminrechte und liefert
+# die x64-Dateien auch auf Windows on ARM, wo "Program Files" nur arm64 hat.
+$giOut = Join-Path $Staging "_gameinput"
+$giTmp = Join-Path $env:TEMP "bedrock-mac-gameinput"
+$msi = Join-Path $Staging "Installers\GameInputRedist.msi"
 $gi = "C:\Program Files\Microsoft GameInput"
-if (Test-Path $gi) {
-    Write-Host "  GameInput-Redist gefunden, wird mit exportiert."
-    robocopy $gi (Join-Path $Staging "_gameinput") /E /R:1 /W:1 /NP /NFL /NDL | Out-Null
-    reg export "HKLM\SOFTWARE\Microsoft\GameInput" (Join-Path $Staging "_gameinput\gameinput.reg") /y | Out-Null
+if (Test-Path $giTmp) { Remove-Item $giTmp -Recurse -Force }
+if (Test-Path $msi) {
+    $p = Start-Process msiexec.exe -Wait -PassThru `
+        -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$giTmp`""
+    if ($p.ExitCode -ne 0) { throw "GameInput-MSI liess sich nicht entpacken (msiexec $($p.ExitCode))." }
+    robocopy (Join-Path $giTmp "Microsoft GameInput") $giOut /E /R:1 /W:1 /NP /NFL /NDL | Out-Null
+    Remove-Item $giTmp -Recurse -Force
+} elseif (Test-Path "$gi\x64") {
+    robocopy $gi $giOut /E /R:1 /W:1 /NP /NFL /NDL | Out-Null
+}
+if (Test-Path "$giOut\x64\GameInputRedist.dll") {
+    Write-Host "  GameInput-Redist (x64) wird mit exportiert."
+    reg query "HKLM\SOFTWARE\Microsoft\GameInput" 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        reg export "HKLM\SOFTWARE\Microsoft\GameInput" (Join-Path $giOut "gameinput.reg") /y | Out-Null
+    }
 } else {
-    Write-Host "  Keine GameInput-Redist unter $gi, der Mac nutzt dann die eingebaute von WineGDK." -ForegroundColor Yellow
+    Write-Host "  Keine x64-GameInput-Redist gefunden, der Mac nutzt dann die eingebaute von WineGDK." -ForegroundColor Yellow
 }
 
 @"
