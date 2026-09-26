@@ -16,6 +16,7 @@ on:
     paths:
       - ".github/workflows/build-runtime.yml"
       - "scripts/**"
+      - "patches/**"
 
 permissions:
   contents: read
@@ -25,6 +26,8 @@ env:
   DXMT_TAG: ${{ inputs.dxmt_tag || 'v0.80' }}
   LLVM_MINGW: llvm-mingw-20260908-ucrt-macos-universal
   PORTS: /opt/local
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 3G
   SRC: ${{ github.workspace }}/src
   STAGE: ${{ github.workspace }}/stage
   DIST: ${{ github.workspace }}/dist
@@ -59,7 +62,7 @@ jobs:
       - name: Install host libraries
         run: |
           set -euxo pipefail
-          sudo port -N install gnutls freetype bison pkgconfig
+          sudo port -N install gnutls freetype bison pkgconfig ccache
           port installed
 
       - name: Install llvm-mingw
@@ -81,6 +84,19 @@ jobs:
           git checkout --detach FETCH_HEAD
           echo "WINEGDK_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           git log -1 --format='%H %cd %s'
+          for p in "$GITHUB_WORKSPACE"/patches/winegdk/*.patch; do
+            echo "applying $(basename "$p")"
+            git apply "$p"
+          done
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ env.WINEGDK_SHA }}-${{ hashFiles('patches/**') }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ env.WINEGDK_SHA }}-
+            ccache-
 
       - name: Configure WineGDK
         working-directory: src/winegdk
@@ -90,6 +106,9 @@ jobs:
           export PKG_CONFIG_PATH="$PORTS/lib/pkgconfig"
           ./configure --prefix="$STAGE" \
             --enable-archs=x86_64 \
+            CC="ccache /usr/bin/clang" CXX="ccache /usr/bin/clang++" \
+            x86_64_CC="ccache x86_64-w64-mingw32-clang" \
+            x86_64_CXX="ccache x86_64-w64-mingw32-clang++" \
             --without-x \
             CFLAGS="-O2 -I$PORTS/include" \
             LDFLAGS="-L$PORTS/lib" \
@@ -100,8 +119,17 @@ jobs:
         working-directory: src/winegdk
         run: |
           set -euxo pipefail
+          ccache -z
           make -j"$(sysctl -n hw.ncpu)"
           make install
+          ccache -s
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ env.WINEGDK_SHA }}-${{ hashFiles('patches/**') }}-${{ github.run_id }}
 
       - name: Add DXMT (official, attested release)
         env:

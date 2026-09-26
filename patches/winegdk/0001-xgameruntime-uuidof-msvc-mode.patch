@@ -1,0 +1,53 @@
+xgameruntime: Attach GUIDs to classes used with __uuidof.
+
+Wine's __CRT_UUID_DECL emulation only exists for GCC-compatible
+compilers. With clang targeting x86_64-windows (MSVC mode, which Wine's
+configure selects for clang, also on macOS), __CRT_UUID_DECL expands to
+nothing and __uuidof() on these classes fails with "cannot call operator
+__uuidof on a type with no GUID". DECLSPEC_UUID covers the MSVC mode and
+is empty for GCC, so both builds keep working.
+
+diff --git a/dlls/xgameruntime/GDKComponent/System/Threading/XTaskQueue.h b/dlls/xgameruntime/GDKComponent/System/Threading/XTaskQueue.h
+index 2c68e955..abc844a7 100644
+--- a/dlls/xgameruntime/GDKComponent/System/Threading/XTaskQueue.h
++++ b/dlls/xgameruntime/GDKComponent/System/Threading/XTaskQueue.h
+@@ -269,7 +269,7 @@ private:
+ };
+ 
+ 
+-class TaskQueuePortImpl : public ITaskQueuePort
++class DECLSPEC_UUID("4529cadf-1ba0-4038-a854-2c0ca26396cb") TaskQueuePortImpl : public ITaskQueuePort
+ {
+ public:
+ 
+@@ -458,7 +458,7 @@ private:
+ __CRT_UUID_DECL(TaskQueuePortImpl, 0x4529CADF, 0x1BA0, 0x4038, 0xA8,0x54, 0x2C,0x0C,0xA2,0x63,0x96,0xCB)
+ #endif
+ 
+-class TaskQueuePortContextImpl : public ITaskQueuePortContext
++class DECLSPEC_UUID("afaf0302-aebb-491a-946f-bfb283496e7a") TaskQueuePortContextImpl : public ITaskQueuePortContext
+ {
+ public:
+ 
+@@ -504,7 +504,7 @@ private:
+ __CRT_UUID_DECL(TaskQueuePortContextImpl, 0xAFAF0302, 0xAEBB, 0x491A, 0x94,0x6F, 0xBF,0xB2,0x83,0x49,0x6E,0x7A)
+ #endif
+ 
+-class TaskQueueImpl : public ITaskQueue
++class DECLSPEC_UUID("d63140d8-9a27-4951-b446-fb8639490a9b") TaskQueueImpl : public ITaskQueue
+ #ifdef SUSPEND_API
+     , public ISuspendResumeCallback
+ #endif
+diff --git a/dlls/xgameruntime/GDKComponent/System/User/UserImpl.h b/dlls/xgameruntime/GDKComponent/System/User/UserImpl.h
+index 5f1f8f41..caf79ef4 100644
+--- a/dlls/xgameruntime/GDKComponent/System/User/UserImpl.h
++++ b/dlls/xgameruntime/GDKComponent/System/User/UserImpl.h
+@@ -27,7 +27,7 @@
+ 
+ #include <atomic>
+ 
+-struct IUser : IUnknown
++struct DECLSPEC_UUID("5f280469-fb5a-44aa-9f14-d77c7c90a5dc") IUser : IUnknown
+ {
+     virtual HRESULT WINAPI GetMsaToken( HSTRING *token ) = 0;
+ };
