@@ -141,6 +141,45 @@ else
     OVERRIDES="$OVERRIDES;gameinput,GameInputRedist=b"
 fi
 
+# Xbox-Login: WineGDKs XUser holt sich mit dem Refresh-Token aus xbox-login.py
+# selbst die Xbox-Live-Tokens. ConsoleMode=8 schaltet Minecraft auf den
+# XSAPI-Pfad, und Azure lehnt Wines TLS-1.3-Handshake ab, daher TLS 1.2.
+# Werte wie in BedrockOnLinux (bol/auth.py). Nur bei Änderung importieren.
+TOKEN_FILE="$BEDROCK_HOME/msa-refresh-token"
+if [[ -s "$TOKEN_FILE" ]]; then
+    TOKEN_LINE="\"RefreshToken\"=\"$(tr -d '\r\n"\\' <"$TOKEN_FILE")\""
+else
+    TOKEN_LINE='"RefreshToken"=-'
+fi
+XBOX_REG="$(cat <<EOF
+Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\OEM]
+"ConsoleMode"=dword:00000008
+
+[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\WinHttp]
+"DefaultSecureProtocols"=dword:00000a00
+
+[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\SchannelTLS\\Protocols\\TLS 1.3\\Client]
+"DisabledByDefault"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\\Software\\Wine\\WineGDK]
+$TOKEN_LINE
+EOF
+)"
+if [[ "$(cat "$PREFIX/.bedrock-xbox.reg" 2>/dev/null)" != "$XBOX_REG" ]]; then
+    say "trage Xbox-Login-Einstellungen in den Prefix ein"
+    printf '%s\n' "$XBOX_REG" >"$PREFIX/.bedrock-xbox.reg"
+    chmod 600 "$PREFIX/.bedrock-xbox.reg"
+    "$WINE" regedit /S "Z:$(echo "$PREFIX/.bedrock-xbox.reg" | tr / '\\')" >>"$LOGDIR/wineboot.log" 2>&1
+    "$RUNTIME/bin/wineserver" -w
+fi
+[[ -s "$TOKEN_FILE" ]] || say "nicht bei Xbox angemeldet, dafür einmal ./xbox-login.py ausführen"
+
+# Ist in macOS eine Eingabemethode statt eines reinen Layouts aktiv, meldet
+# Wine sonst eine IME-Tastatur und das Spiel sieht jede Taste als VK_PROCESSKEY.
+export WINEMAC_NO_IME_HKL=1
+
 [[ "$MODE" == --setup-only ]] && { say "Prefix fertig"; exit 0; }
 
 # --- Start -------------------------------------------------------------------

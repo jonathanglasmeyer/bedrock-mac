@@ -42,6 +42,11 @@ Das Skript bricht ab, wenn die exe noch verschlüsselt oder keine x64-Datei ist.
    ```
 2. Spieldateien per Export-Skript nach `~/Downloads/minecraft-bedrock` holen (siehe oben).
 3. Microsofts native x64-`xgameruntime.dll` als `~/Games/bedrock-mac/xgameruntime.dll.threading` ablegen. WineGDK nutzt sie für XThreading, ohne sie stürzt das Spiel beim Laden ab. Auf einem x64-Windows liegt sie unter `C:\Windows\System32\xgameruntime.dll`. Auf Windows on ARM gibt es dort nur ARM64, dann aus dem x64-Paket "Gaming Services" (`Microsoft.GamingServices_8wekyb3d8bbwe`, z. B. über store.rg-adguard.net) die Datei `GamingServicesTcui-Package_*_x64.appx` und daraus `xgameruntime.dll` entpacken.
-4. `./bedrock.sh`
+4. Optional für Xbox-Login: einmal `./xbox-login.py`, Code im Browser eingeben. Der Refresh-Token landet in `~/Games/bedrock-mac/msa-refresh-token`, `bedrock.sh` trägt ihn in den Prefix ein. `./xbox-login.py --logout` meldet wieder ab.
+5. `./bedrock.sh`
 
-Logs landen unter `~/Games/bedrock-mac/logs/`. Für ausführliches Wine-Logging `WINEDEBUG=+loaddll,+module ./bedrock.sh`. Erstes Ziel ist Singleplayer und LAN ohne Xbox-Login; Vibrant Visuals und Login sind noch offen.
+Logs landen unter `~/Games/bedrock-mac/logs/`. Für ausführliches Wine-Logging `WINEDEBUG=+loaddll,+module ./bedrock.sh`. Singleplayer und LAN laufen; der Xbox-Login ist in Arbeit, Vibrant Visuals (DX12) noch offen.
+
+## Patches
+
+`patches/winegdk/` wird im Build auf den gepinnten WineGDK-Commit angewendet. Der Commit `75637b6` und die `bol-*`-Patches stammen aus [BedrockOnLinux](https://github.com/Wyze3306/BedrockOnLinux) (MIT, `third_party/winegdk-native5`): XUser mit echtem Xbox-Live-Login, Xbox-Kontext, Realms, XStore- und XSystem-Fixes. Nicht übernommen sind der X11-Patch und das Laden einer verschlüsselten Exe aus dem Speicher, weil wir die Spieldateien aus der eigenen Windows-Installation exportieren. `0101-winemac-optional-plain-keyboard-hkl.patch` ist von hier: Mit `WINEMAC_NO_IME_HKL=1` meldet Wines Mac-Treiber auch bei Eingabemethoden (z. B. eigenen Layouts wie Workman) eine normale Tastatur, sonst kommt jede Taste als VK_PROCESSKEY (229) im Spiel an.

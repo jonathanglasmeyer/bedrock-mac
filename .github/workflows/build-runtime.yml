@@ -6,7 +6,7 @@ on:
       winegdk_ref:
         description: "Weather-OS/WineGDK commit or branch"
         required: false
-        default: "b03ba49c4f326c36aa6930fbe6cf72841ef3738c"
+        default: "75637b674e1f191e65753663c4c0c32bea05ba6e"
       dxmt_tag:
         description: "3Shain/dxmt release tag"
         required: false
@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 env:
-  WINEGDK_REF: ${{ inputs.winegdk_ref || 'b03ba49c4f326c36aa6930fbe6cf72841ef3738c' }}
+  WINEGDK_REF: ${{ inputs.winegdk_ref || '75637b674e1f191e65753663c4c0c32bea05ba6e' }}
   DXMT_TAG: ${{ inputs.dxmt_tag || 'v0.80' }}
   LLVM_MINGW: llvm-mingw-20260908-ucrt-macos-universal
   PORTS: /opt/local

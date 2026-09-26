@@ -1,0 +1,25 @@
+diff --git a/dlls/winemac.drv/keyboard.c b/dlls/winemac.drv/keyboard.c
+index 7c49be78..fe31c92e 100644
+--- a/dlls/winemac.drv/keyboard.c
++++ b/dlls/winemac.drv/keyboard.c
+@@ -30,6 +30,8 @@
+ 
+ #include "config.h"
+ 
++#include <stdlib.h>
++
+ #include "macdrv.h"
+ #include "winuser.h"
+ #include "wine/server.h"
+@@ -430,7 +432,10 @@ static HKL get_hkl(CFStringRef lang, CFStringRef type)
+         }
+     }
+ 
+-    if (!CFEqual(type, kTISTypeKeyboardLayout)) lcid |= 0xe0000000;
++    /* Games read WM_KEYDOWN/raw input and see only VK_PROCESSKEY once the
++       HKL claims an IME. WINEMAC_NO_IME_HKL keeps input methods (e.g. ones
++       that only remap a layout) reported as plain keyboards. */
++    if (!CFEqual(type, kTISTypeKeyboardLayout) && !getenv("WINEMAC_NO_IME_HKL")) lcid |= 0xe0000000;
+ 
+     return (HKL)lcid;
+ }
