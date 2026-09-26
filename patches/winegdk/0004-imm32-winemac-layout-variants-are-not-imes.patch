@@ -1,0 +1,29 @@
+imm32, winemac: Do not treat 0xFxxx keyboard layout HKLs as IMEs.
+
+IME HKLs have 0xE in the top nibble of the high word; 0xFxxx is a layout
+variant (winemac hands those out when two macOS input sources share a
+language, e.g. U.S. plus a custom layout). The old mask also matched 0xF,
+so every key went through the Mac IME and games got VK_PROCESSKEY (229).
+
+--- a/dlls/imm32/ime.c	2026-09-26 23:57:23
++++ b/dlls/imm32/ime.c	2026-09-26 23:57:23
+@@ -48,7 +48,7 @@
+     case MAKELANGID(LANG_TIGRINYA, SUBLANG_TIGRINYA_ETHIOPIA): return TRUE;
+     case MAKELANGID(LANG_VIETNAMESE, SUBLANG_VIETNAMESE_VIETNAM): return TRUE;
+     case MAKELANGID(LANG_YI, SUBLANG_YI_PRC): return TRUE;
+-    default: return (HIWORD(hkl) & 0xe000) == 0xe000;
++    default: return (HIWORD(hkl) & 0xf000) == 0xe000;
+     }
+ }
+ 
+--- a/dlls/winemac.drv/keyboard.c	2026-09-26 23:57:23
++++ b/dlls/winemac.drv/keyboard.c	2026-09-26 23:57:23
+@@ -62,7 +62,7 @@
+     case MAKELANGID(LANG_TIGRINYA, SUBLANG_TIGRINYA_ETHIOPIA): return TRUE;
+     case MAKELANGID(LANG_VIETNAMESE, SUBLANG_VIETNAMESE_VIETNAM): return TRUE;
+     case MAKELANGID(LANG_YI, SUBLANG_YI_PRC): return TRUE;
+-    default: return (HIWORD(hkl) & 0xe000) == 0xe000;
++    default: return (HIWORD(hkl) & 0xf000) == 0xe000;
+     }
+ }
+ 
