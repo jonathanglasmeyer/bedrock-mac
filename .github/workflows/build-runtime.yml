@@ -1,0 +1,172 @@
+name: build-runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      winegdk_ref:
+        description: "Weather-OS/WineGDK commit or branch"
+        required: false
+        default: "b03ba49c4f326c36aa6930fbe6cf72841ef3738c"
+      dxmt_tag:
+        description: "3Shain/dxmt release tag"
+        required: false
+        default: "v0.80"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-runtime.yml"
+      - "scripts/**"
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  INTEL_BREW: /usr/local/bin/brew
+  INTEL_PREFIX: /usr/local
+  WINEGDK_REF: ${{ inputs.winegdk_ref || 'b03ba49c4f326c36aa6930fbe6cf72841ef3738c' }}
+  DXMT_TAG: ${{ inputs.dxmt_tag || 'v0.80' }}
+  SRC: ${{ github.workspace }}/src
+  STAGE: ${{ github.workspace }}/stage
+  DIST: ${{ github.workspace }}/dist
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 300
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Runner info
+        run: |
+          set -euxo pipefail
+          uname -a; sw_vers; sysctl -n hw.ncpu; xcodebuild -version
+
+      - name: Install Rosetta and Intel Homebrew
+        run: |
+          set -euxo pipefail
+          softwareupdate --install-rosetta --agree-to-license || true
+          if [ ! -x "$INTEL_BREW" ]; then
+            NONINTERACTIVE=1 arch -x86_64 /bin/bash -c \
+              "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+          arch -x86_64 "$INTEL_BREW" --version
+
+      - name: Install dependencies
+        run: |
+          set -euxo pipefail
+          arch -x86_64 "$INTEL_BREW" install gnutls freetype vulkan-headers vulkan-loader molten-vk
+          brew install llvm@21 lld@21 bison
+          {
+            echo "LLVM_BINDIR=$(brew --prefix llvm@21)/bin"
+            echo "VULKAN_HEADER_DIR=$(arch -x86_64 "$INTEL_BREW" --prefix vulkan-headers)"
+            echo "VULKAN_LOADER_DIR=$(arch -x86_64 "$INTEL_BREW" --prefix vulkan-loader)"
+          } >> "$GITHUB_ENV"
+          {
+            echo "$(brew --prefix llvm@21)/bin"
+            echo "$(brew --prefix lld@21)/bin"
+            echo "$(brew --prefix bison)/bin"
+          } >> "$GITHUB_PATH"
+
+      - name: Fetch WineGDK
+        run: |
+          set -euxo pipefail
+          git init "$SRC/winegdk"
+          cd "$SRC/winegdk"
+          git remote add origin https://github.com/Weather-OS/WineGDK.git
+          git fetch --depth 1 origin "$WINEGDK_REF"
+          git checkout --detach FETCH_HEAD
+          echo "WINEGDK_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git log -1 --format='%H %cd %s'
+
+      - name: Configure WineGDK
+        working-directory: src/winegdk
+        run: |
+          set -euxo pipefail
+          export SDKROOT="$(xcrun --show-sdk-path)"
+          arch -x86_64 ./configure --prefix="$STAGE" \
+            CC=clang CXX=clang++ \
+            "CFLAGS=-O2 -I$INTEL_PREFIX/include -I$VULKAN_HEADER_DIR/include --target=x86_64-apple-darwin" \
+            "LDFLAGS=-L$VULKAN_LOADER_DIR/lib -L$INTEL_PREFIX/lib" \
+            "x86_64_CC=$LLVM_BINDIR/clang" "x86_64_CXX=$LLVM_BINDIR/clang++" \
+            "x86_64_CFLAGS=-O2" x86_64_LDFLAGS=-fuse-ld=lld \
+            --enable-archs=x86_64 \
+            --build=x86_64-apple-darwin --host=x86_64-apple-darwin \
+            FREETYPE_CFLAGS=-I$INTEL_PREFIX/include/freetype2 \
+            FREETYPE_LIBS=$INTEL_PREFIX/lib/libfreetype.6.dylib
+
+      - name: Build and install WineGDK
+        working-directory: src/winegdk
+        run: |
+          set -euxo pipefail
+          export SDKROOT="$(xcrun --show-sdk-path)"
+          arch -x86_64 make -j"$(sysctl -n hw.ncpu)"
+          arch -x86_64 make install
+
+      - name: Add DXMT (official, attested release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          mkdir -p "$SRC/dxmt" && cd "$SRC/dxmt"
+          gh release view "$DXMT_TAG" -R 3Shain/dxmt --json assets --jq '.assets[].name'
+          gh release download "$DXMT_TAG" -R 3Shain/dxmt -p "dxmt-*.tar.gz"
+          TARBALL="$(ls dxmt-*.tar.gz | head -n1)"
+          gh attestation verify "$TARBALL" --repo 3Shain/dxmt
+          tar -xzf "$TARBALL"
+          ROOT="$(dirname "$(find . -type d -name x86_64-windows | head -n1)")"
+          ls -R "$ROOT"
+          # keep Wine's own wined3d-based DLLs as a fallback
+          mkdir -p "$STAGE/share/bedrock-mac/wined3d"
+          for f in d3d11.dll dxgi.dll d3d10core.dll d3d12.dll; do
+            [ -f "$STAGE/lib/wine/x86_64-windows/$f" ] && cp "$STAGE/lib/wine/x86_64-windows/$f" "$STAGE/share/bedrock-mac/wined3d/"
+          done
+          cp "$ROOT"/x86_64-windows/*.dll "$STAGE/lib/wine/x86_64-windows/"
+          cp "$ROOT"/x86_64-unix/*.so "$STAGE/lib/wine/x86_64-unix/"
+
+      - name: Bundle Homebrew dylibs
+        run: |
+          set -euxo pipefail
+          python3 scripts/bundle_dylibs.py "$STAGE" \
+            "$INTEL_PREFIX"/opt/gnutls/lib/libgnutls.30.dylib \
+            "$INTEL_PREFIX"/opt/freetype/lib/libfreetype.6.dylib \
+            "$INTEL_PREFIX"/opt/vulkan-loader/lib/libvulkan.1.dylib \
+            "$INTEL_PREFIX"/opt/molten-vk/lib/libMoltenVK.dylib
+
+      - name: Write build info
+        run: |
+          set -euxo pipefail
+          cat > "$STAGE/share/bedrock-mac/BUILDINFO" <<INFO
+          winegdk=https://github.com/Weather-OS/WineGDK/commit/$WINEGDK_SHA
+          dxmt=https://github.com/3Shain/dxmt/releases/tag/$DXMT_TAG
+          workflow=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          commit=${{ github.sha }}
+          INFO
+          cat "$STAGE/share/bedrock-mac/BUILDINFO"
+          file "$STAGE/bin/wine" "$STAGE/lib/wine/x86_64-unix/ntdll.so" "$STAGE/lib/wine/x86_64-unix/winemetal.so"
+          otool -L "$STAGE/lib/wine/x86_64-unix/winemetal.so"
+
+      - name: Package
+        run: |
+          set -euxo pipefail
+          mkdir -p "$DIST"
+          NAME="bedrock-mac-runtime-${WINEGDK_SHA:0:12}-dxmt-$DXMT_TAG-x86_64"
+          echo "NAME=$NAME" >> "$GITHUB_ENV"
+          tar -C "$STAGE" -cJf "$DIST/$NAME.tar.xz" .
+          (cd "$DIST" && shasum -a 256 "$NAME.tar.xz" | tee "$NAME.tar.xz.sha256")
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.NAME }}
+          path: dist/
+          if-no-files-found: error
+
+      - name: Upload config.log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: config-log
+          path: src/winegdk/config.log
+          if-no-files-found: ignore
