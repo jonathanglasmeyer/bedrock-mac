@@ -9,6 +9,7 @@
 #   BEDROCK_RUNTIME  entpacktes Runtime-Tarball  (Default ~/Games/bedrock-mac/runtime)
 #   BEDROCK_GAME     exportierte Spieldateien    (Default ~/Downloads/minecraft-bedrock)
 #   BEDROCK_HOME     Prefixe, Welten (data/), Shader-Cache, Logs (Default ~/Games/bedrock-mac)
+#                    plus xgameruntime.dll.threading (native x64-xgameruntime.dll von Microsoft)
 #   WINEDEBUG        Wine-Logging (Default -all; zum Debuggen z. B. +loaddll,+module)
 set -euo pipefail
 
@@ -95,6 +96,17 @@ if [[ -f "$C_GAME/Microsoft.WindowsAppRuntime.Bootstrap.dll" ]] && \
    ! cmp -s "$STUB" "$C_GAME/Microsoft.WindowsAppRuntime.Bootstrap.dll"; then
     say "ersetze den Windows-App-SDK-Bootstrapper durch einen Stub"
     cp "$STUB" "$C_GAME/Microsoft.WindowsAppRuntime.Bootstrap.dll"
+fi
+
+# XThreading läuft nur mit Microsofts nativer x64-xgameruntime.dll stabil, sonst
+# stürzt das Spiel in einem Worker-Thread ab. Quelle: x64-Paket "Gaming Services"
+# (xgameruntime.dll im GamingServicesTcui-Package_*_x64.appx), siehe README.
+THREADING="$BEDROCK_HOME/xgameruntime.dll.threading"
+C_THREADING="$PREFIX/drive_c/windows/system32/xgameruntime.dll.threading"
+if [[ -f "$THREADING" ]]; then
+    cmp -s "$THREADING" "$C_THREADING" || cp "$THREADING" "$C_THREADING"
+else
+    say "Warnung: $THREADING fehlt, das Spiel stürzt vermutlich beim Laden ab"
 fi
 
 if [[ -d "$GAME/_gameinput/x64" ]]; then

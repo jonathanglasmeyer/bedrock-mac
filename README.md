@@ -23,7 +23,7 @@ Die Runtime lädt gnutls und freetype per `dlopen`; beim Start muss `DYLD_FALLBA
 
 ## Spieldateien exportieren
 
-Auf Windows (echter PC oder Parallels-VM): Minecraft über die Xbox-App installieren und einmal starten. Dann PowerShell als Administrator:
+Auf Windows (echter PC oder Parallels-VM): Minecraft über die Xbox-App installieren und einmal starten. Dann eine normale PowerShell (keine Adminrechte nötig):
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -41,6 +41,7 @@ Das Skript bricht ab, wenn die exe noch verschlüsselt oder keine x64-Datei ist.
    tar -xJf bedrock-mac-runtime-*.tar.xz -C ~/Games/bedrock-mac/runtime
    ```
 2. Spieldateien per Export-Skript nach `~/Downloads/minecraft-bedrock` holen (siehe oben).
-3. `./bedrock.sh`
+3. Microsofts native x64-`xgameruntime.dll` als `~/Games/bedrock-mac/xgameruntime.dll.threading` ablegen. WineGDK nutzt sie für XThreading, ohne sie stürzt das Spiel beim Laden ab. Auf einem x64-Windows liegt sie unter `C:\Windows\System32\xgameruntime.dll`. Auf Windows on ARM gibt es dort nur ARM64, dann aus dem x64-Paket "Gaming Services" (`Microsoft.GamingServices_8wekyb3d8bbwe`, z. B. über store.rg-adguard.net) die Datei `GamingServicesTcui-Package_*_x64.appx` und daraus `xgameruntime.dll` entpacken.
+4. `./bedrock.sh`
 
 Logs landen unter `~/Games/bedrock-mac/logs/`. Für ausführliches Wine-Logging `WINEDEBUG=+loaddll,+module ./bedrock.sh`. Erstes Ziel ist Singleplayer und LAN ohne Xbox-Login; Vibrant Visuals und Login sind noch offen.
