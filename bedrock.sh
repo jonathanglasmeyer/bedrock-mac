@@ -200,4 +200,25 @@ export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}$OVERRIDES"
 LOG="$LOGDIR/minecraft-$(date +%Y%m%d-%H%M%S).log"
 say "starte Minecraft $VERSION (Log: $LOG)"
 cd "$C_GAME"
+
+# Wine übersetzt Tasten über das aktive macOS-Layout, Spiele wollen aber Positionen.
+# Mit alternativem Layout (Workman, Dvorak …) die ID eines QWERTY-Layouts in
+# $BEDROCK_HOME/input-source ablegen (z. B. com.apple.keylayout.US); dann wird es
+# für die Spieldauer aktiviert und danach das vorherige wiederhergestellt.
+INPUT_SOURCE="${BEDROCK_INPUT_SOURCE:-$(cat "$BEDROCK_HOME/input-source" 2>/dev/null || true)}"
+if [[ -n "$INPUT_SOURCE" ]]; then
+    ISW="$BEDROCK_HOME/bin/inputsource"
+    ISW_SRC="$(cd "$(dirname "$0")" && pwd)/scripts/inputsource.swift"
+    if [[ ! -x "$ISW" || "$ISW_SRC" -nt "$ISW" ]]; then
+        mkdir -p "$(dirname "$ISW")"
+        xcrun swiftc -O "$ISW_SRC" -o "$ISW" >>"$LOGDIR/wineboot.log" 2>&1 || ISW=""
+    fi
+    if [[ -n "$ISW" ]] && PREV_SOURCE="$("$ISW")" && "$ISW" "$INPUT_SOURCE"; then
+        say "Tastaturlayout für die Spieldauer: $INPUT_SOURCE (danach wieder $PREV_SOURCE)"
+        trap '"$ISW" "$PREV_SOURCE"' EXIT
+        "$WINE" 'C:\Program Files\Minecraft Launcher\Minecraft.Windows.exe' >"$LOG" 2>&1
+        exit $?
+    fi
+    say "Warnung: konnte das Tastaturlayout nicht auf $INPUT_SOURCE umstellen"
+fi
 exec "$WINE" 'C:\Program Files\Minecraft Launcher\Minecraft.Windows.exe' >"$LOG" 2>&1

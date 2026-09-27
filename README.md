@@ -45,6 +45,8 @@ Das Skript bricht ab, wenn die exe noch verschlüsselt oder keine x64-Datei ist.
 4. Optional für Xbox-Login: einmal `./xbox-login.py`, Code im Browser eingeben. Der Refresh-Token landet in `~/Games/bedrock-mac/msa-refresh-token`, `bedrock.sh` trägt ihn in den Prefix ein. `./xbox-login.py --logout` meldet wieder ab.
 5. `./bedrock.sh`, oder einmal `scripts/make-app.sh` ausführen: Das legt `~/Applications/Minecraft Bedrock.app` an, die über Spotlight, Raycast oder das Dock startet (Fehler erscheinen als Dialog, Ausgabe in `logs/app.log`).
 
+Wer in macOS ein alternatives Layout nutzt (Workman, Dvorak, Colemak), legt die ID eines QWERTY-Layouts in `~/Games/bedrock-mac/input-source` ab, z. B. `echo com.apple.keylayout.US > ~/Games/bedrock-mac/input-source`. `bedrock.sh` schaltet es für die Spieldauer ein und danach zurück, sonst liegt WASD auf den falschen Tasten.
+
 Logs landen unter `~/Games/bedrock-mac/logs/`. Für ausführliches Wine-Logging `WINEDEBUG=+loaddll,+module ./bedrock.sh`. Singleplayer und LAN laufen; der Xbox-Login ist in Arbeit, Vibrant Visuals (DX12) noch offen.
 
 ## Patches
