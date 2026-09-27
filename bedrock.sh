@@ -187,6 +187,11 @@ fi
 # Ist in macOS eine Eingabemethode statt eines reinen Layouts aktiv, meldet
 # Wine sonst eine IME-Tastatur und das Spiel sieht jede Taste als VK_PROCESSKEY.
 export WINEMAC_NO_IME_HKL=1
+# Tasten nach physischer Position (US-Belegung) statt nach Mac-Layout, damit
+# WASD auch mit Workman, Dvorak oder Colemak an der gewohnten Stelle liegt.
+# Getippter Text (Chat, Weltnamen) folgt weiter dem Mac-Layout.
+# BEDROCK_LAYOUT_KEYS=1 schaltet das ab.
+[[ -n "${BEDROCK_LAYOUT_KEYS:-}" ]] || export WINEMAC_PHYSICAL_KEYS=1
 
 [[ "$MODE" == --setup-only ]] && { say "Prefix fertig"; exit 0; }
 

@@ -1,0 +1,28 @@
+--- a/dlls/winemac.drv/keyboard.c
++++ b/dlls/winemac.drv/keyboard.c
+@@ -555,6 +555,7 @@
+     int combo;
+     BYTE vkey_used[256];
+     int ignore_diacritics;
++    BOOL physical;
+     static const struct {
+         WCHAR wchar;
+         DWORD vkey;
+@@ -652,10 +653,16 @@
+     memset(thread_data->keyc2vkey, 0, sizeof(thread_data->keyc2vkey));
+     memset(vkey_used, 0, sizeof(vkey_used));
+ 
++    /* WINEMAC_PHYSICAL_KEYS: take every vkey from the physical US position
++       (like Windows with a US layout), whatever the Mac layout says.  Games
++       that bind WASD by vkey then work with Dvorak, Colemak, Workman etc.;
++       typed text still comes from the Mac layout. */
++    physical = getenv("WINEMAC_PHYSICAL_KEYS") != NULL;
++
+     for (keyc = 0; keyc < ARRAY_SIZE(default_map); keyc++)
+     {
+         thread_data->keyc2scan[keyc] = default_map[keyc].scan;
+-        if (default_map[keyc].fixed)
++        if (default_map[keyc].fixed || (physical && default_map[keyc].vkey))
+         {
+             vkey = default_map[keyc].vkey;
+             thread_data->keyc2vkey[keyc] = vkey;
