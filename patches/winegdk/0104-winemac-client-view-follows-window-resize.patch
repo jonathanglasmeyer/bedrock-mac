@@ -1,0 +1,54 @@
+diff --git a/dlls/winemac.drv/cocoa_window.m b/dlls/winemac.drv/cocoa_window.m
+index 56241f2c..bdc94f0d 100644
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -3888,6 +3888,25 @@ void macdrv_set_view_hidden(macdrv_view v, bool hidden)
+ }
+ }
+ 
++/***********************************************************************
++ *              macdrv_set_view_tracks_superview
++ *
++ * Let a view grow and shrink with its superview.  Used for the client
++ * surface of a top-level window, so a Metal view follows the window when
++ * Cocoa resizes it (e.g. entering full screen) before Wine catches up.
++ */
++void macdrv_set_view_tracks_superview(macdrv_view v, bool tracks)
++{
++@autoreleasepool
++{
++    NSView* view = (NSView*)v;
++
++    OnMainThreadAsync(^{
++        [view setAutoresizingMask:tracks ? (NSViewWidthSizable | NSViewHeightSizable) : NSViewNotSizable];
++    });
++}
++}
++
+ /***********************************************************************
+  *              macdrv_add_view_opengl_context
+  *
+diff --git a/dlls/winemac.drv/macdrv_cocoa.h b/dlls/winemac.drv/macdrv_cocoa.h
+index cf2fce8a..14c872ce 100644
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -520,6 +520,7 @@ extern void macdrv_order_cocoa_window(macdrv_window w, macdrv_window prev,
+ extern void macdrv_set_view_frame(macdrv_view v, CGRect rect);
+ extern void macdrv_set_view_superview(macdrv_view v, macdrv_view s, macdrv_window w, macdrv_view p, macdrv_view n);
+ extern void macdrv_set_view_hidden(macdrv_view v, bool hidden);
++extern void macdrv_set_view_tracks_superview(macdrv_view v, bool tracks);
+ extern void macdrv_add_view_opengl_context(macdrv_view v, macdrv_opengl_context c);
+ extern void macdrv_remove_view_opengl_context(macdrv_view v, macdrv_opengl_context c);
+ extern macdrv_metal_device macdrv_create_metal_device(void);
+diff --git a/dlls/winemac.drv/window.c b/dlls/winemac.drv/window.c
+index eef2d12b..6c1756d8 100644
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -1117,6 +1117,7 @@ static void macdrv_client_surface_update(struct client_surface *client)
+     OffsetRect(&rect, data->rects.client.left - data->rects.visible.left, data->rects.client.top - data->rects.visible.top);
+     macdrv_set_view_frame(surface->cocoa_view, cgrect_from_rect(rect));
+     macdrv_set_view_superview(surface->cocoa_view, toplevel == hwnd ? NULL : data->client_view, data->cocoa_window, NULL, NULL);
++    macdrv_set_view_tracks_superview(surface->cocoa_view, toplevel == hwnd);
+     release_win_data(data);
+ }
+ 
