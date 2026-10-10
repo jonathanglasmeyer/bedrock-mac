@@ -6,6 +6,7 @@ Bausteine, alle Open Source:
 
 - [WineGDK](https://github.com/Weather-OS/WineGDK): Wine 11 mit GDK-Komponenten (xgameruntime, XUser, AppModel, GameInput) und der Xodus-Login-Brücke.
 - [DXMT](https://github.com/3Shain/dxmt): Direct3D 11 nach Metal.
+- Optional D3DMetal aus Apples [Game Porting Toolkit](https://developer.apple.com/games/game-porting-toolkit/) für Direct3D 12 (nicht Open Source, wird nicht mitgeliefert).
 - Spieldateien aus der eigenen, lizenzierten Windows-Installation (kein DRM-Bypass in diesem Repo).
 
 ## Stand
@@ -47,7 +48,20 @@ Das Skript bricht ab, wenn die exe noch verschlüsselt oder keine x64-Datei ist.
 
 Wer in macOS ein alternatives Layout nutzt (Workman, Dvorak, Colemak), legt die ID eines QWERTY-Layouts in `~/Games/bedrock-mac/input-source` ab, z. B. `echo com.apple.keylayout.US > ~/Games/bedrock-mac/input-source`. `bedrock.sh` schaltet es für die Spieldauer ein und danach zurück, sonst liegt WASD auf den falschen Tasten.
 
-Logs landen unter `~/Games/bedrock-mac/logs/`. Für ausführliches Wine-Logging `WINEDEBUG=+loaddll,+module ./bedrock.sh`. Singleplayer und LAN laufen; der Xbox-Login ist in Arbeit, Vibrant Visuals (DX12) noch offen.
+Logs landen unter `~/Games/bedrock-mac/logs/`. Für ausführliches Wine-Logging `WINEDEBUG=+loaddll,+module ./bedrock.sh`. Singleplayer und LAN laufen; der Xbox-Login ist in Arbeit, Vibrant Visuals (DX12) siehe unten.
+
+## Vibrant Visuals (D3DMetal, experimentell)
+
+Vibrant Visuals setzt auf dem PC Direct3D 12 voraus ([FAQ](https://feedback.minecraft.net/hc/en-us/community/posts/35391950770317-Vibrant-Visuals-FAQ-Thread)), DXMT kann nur D3D11. Mit DXMT bietet das Spiel deshalb nur Simple und Fancy an. Apples D3DMetal übersetzt D3D11 und D3D12 nach Metal; [bedrockformac](https://github.com/goofygabe8/bedrockformac) nutzt es für dieselbe GDK-Version und bietet dort Vibrant Visuals an.
+
+1. Game Porting Toolkit bei Apple laden (kostenloser Developer-Account): [developer.apple.com/games](https://developer.apple.com/games/game-porting-toolkit/). GPTK 3 für aktuelle macOS-Versionen, GPTK 4 (Beta) ist bisher mit macOS 27 belegt.
+2. Im DMG `Evaluation environment for Windows games *.dmg` öffnen und den Ordner `redist/lib` nach `~/Games/bedrock-mac/d3dmetal` kopieren, sodass dort `external/` und `wine/` liegen:
+   ```sh
+   cp -R "/Volumes/Evaluation environment for Windows games 3.0/redist/lib" ~/Games/bedrock-mac/d3dmetal
+   ```
+3. Einmal ausprobieren mit `BEDROCK_GRAPHICS=d3dmetal ./bedrock.sh`, dauerhaft (auch für die App) mit `echo d3dmetal > ~/Games/bedrock-mac/graphics`. Zurück zu DXMT: Datei löschen.
+
+`bedrock.sh` legt daraus `~/Games/bedrock-mac/runtime-d3dmetal` an, eine APFS-Kopie der Runtime, in der D3DMetals `d3d11`, `d3d12` und `dxgi` die DLLs von DXMT und vkd3d ersetzen. Die Kopie wird neu gebaut, wenn sich Runtime oder Toolkit ändern. Die Fensteranbindung, die D3DMetal im Mac-Treiber erwartet, steckt bereits in `0102-winemac-dxmt-support-backport.patch`. Ungetestet: ob das Spiel damit startet und Vibrant Visuals in den Videoeinstellungen erscheint. Bei Problemen hilft `WINEDEBUG=+loaddll ./bedrock.sh`, im Log muss `d3d12.dll` aus `runtime-d3dmetal` geladen werden.
 
 ## Patches
 

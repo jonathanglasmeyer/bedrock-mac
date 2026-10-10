@@ -10,6 +10,8 @@
 #   BEDROCK_GAME     exportierte Spieldateien    (Default ~/Games/bedrock-mac/game, sonst ~/Downloads/minecraft-bedrock)
 #   BEDROCK_HOME     Prefixe, Welten (data/), Shader-Cache, Logs (Default ~/Games/bedrock-mac)
 #                    plus xgameruntime.dll.threading (native x64-xgameruntime.dll von Microsoft)
+#   BEDROCK_GRAPHICS dxmt (Default, D3D11) oder d3dmetal (D3D12 über Apples D3DMetal, für
+#                    Vibrant Visuals); alternativ dauerhaft in $BEDROCK_HOME/graphics
 #   WINEDEBUG        Wine-Logging (Default -all; zum Debuggen z. B. +loaddll,+module)
 set -euo pipefail
 
@@ -58,14 +60,55 @@ fi
 # Aus dem Browser geladene Runtime ist in Quarantäne; Gatekeeper würde jede Datei einzeln blocken.
 xattr -dr com.apple.quarantine "$RUNTIME" 2>/dev/null || true
 
+# --- Grafik-Backend ----------------------------------------------------------
+# DXMT kann nur D3D11, Vibrant Visuals braucht D3D12. D3DMetal aus Apples Game
+# Porting Toolkit kann beides, darf aber nicht mitgeliefert werden: Den Ordner
+# redist/lib aus dem Toolkit nach $BEDROCK_HOME/d3dmetal kopieren (enthält
+# external/ und wine/). Daraus entsteht eine eigene Runtime-Kopie (APFS-Klon),
+# in der D3DMetals d3d11/d3d12/dxgi die von DXMT und vkd3d ersetzen. Die
+# winemac-Seite dafür bringt patches/winegdk/0102 mit.
+GRAPHICS="${BEDROCK_GRAPHICS:-$(tr -d '[:space:]' <"$BEDROCK_HOME/graphics" 2>/dev/null || true)}"
+GRAPHICS="${GRAPHICS:-dxmt}"
+case "$GRAPHICS" in
+dxmt) ;;
+d3dmetal)
+    GPTK="${BEDROCK_D3DMETAL:-$BEDROCK_HOME/d3dmetal}"
+    [[ -f "$GPTK/wine/x86_64-windows/d3d12.dll" && -d "$GPTK/external" ]] || \
+        die "kein D3DMetal unter $GPTK (redist/lib aus Apples Game Porting Toolkit dorthin kopieren, siehe README)"
+    xattr -dr com.apple.quarantine "$GPTK" 2>/dev/null || true
+    OVERLAY="$BEDROCK_HOME/runtime-d3dmetal"
+    STAMP="$(cat "$RUNTIME/share/bedrock-mac/BUILDINFO" 2>/dev/null; cd "$GPTK" && find . -type f -exec stat -f '%N %z %m' {} + | sort)"
+    if [[ "$(cat "$OVERLAY/.bedrock-d3dmetal" 2>/dev/null)" != "$STAMP" ]]; then
+        say "baue Runtime mit D3DMetal: $OVERLAY"
+        rm -rf "$OVERLAY"
+        mkdir -p "$OVERLAY"
+        cp -Rc "$RUNTIME/." "$OVERLAY/" 2>/dev/null || cp -R "$RUNTIME/." "$OVERLAY/"
+        cp -R "$GPTK/wine/." "$OVERLAY/lib/wine/"
+        cp -R "$GPTK/external" "$OVERLAY/lib/"
+        printf '%s\n' "$STAMP" >"$OVERLAY/.bedrock-d3dmetal"
+    fi
+    RUNTIME="$OVERLAY"
+    WINE="$RUNTIME/bin/wine"
+    ;;
+*) die "unbekanntes Grafik-Backend '$GRAPHICS' (dxmt oder d3dmetal)" ;;
+esac
+
 # --- Umgebung ----------------------------------------------------------------
 export WINEPREFIX="$PREFIX"
 export WINEDEBUG="${WINEDEBUG:--all}"
 # Wine lädt gnutls/freetype per dlopen über den Namen.
 export DYLD_FALLBACK_LIBRARY_PATH="$RUNTIME/lib:/usr/lib"
-export DXMT_SHADER_CACHE_PATH="$BEDROCK_HOME/shader-cache"
-# DXMT ersetzt d3d11/dxgi im Runtime-Verzeichnis, "builtin" heißt hier also DXMT.
-OVERRIDES="d3d11,dxgi,d3d10core,winemetal=b"
+if [[ "$GRAPHICS" == d3dmetal ]]; then
+    # D3DMetal.framework und libd3dshared.dylib liegen in lib/external.
+    export DYLD_FALLBACK_LIBRARY_PATH="$RUNTIME/lib/external:$DYLD_FALLBACK_LIBRARY_PATH"
+    export DYLD_FALLBACK_FRAMEWORK_PATH="$RUNTIME/lib/external${DYLD_FALLBACK_FRAMEWORK_PATH:+:$DYLD_FALLBACK_FRAMEWORK_PATH}"
+    # Auch hier heißt "builtin" die Dateien aus der Runtime-Kopie, also D3DMetal.
+    OVERRIDES="d3d11,d3d12,dxgi,d3d10core=b"
+else
+    export DXMT_SHADER_CACHE_PATH="$BEDROCK_HOME/shader-cache"
+    # DXMT ersetzt d3d11/dxgi im Runtime-Verzeichnis, "builtin" heißt hier also DXMT.
+    OVERRIDES="d3d11,dxgi,d3d10core,winemetal=b"
+fi
 # Kein Wine-Mono/Gecko: Minecraft braucht weder .NET noch den HTML-Renderer, und
 # ohne das fragt Wine bei jedem Prefix-Update nach dem Download.
 export WINEDLLOVERRIDES="mscoree,mshtml=${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
@@ -198,7 +241,7 @@ export WINEMAC_NO_IME_HKL=1
 # --- Start -------------------------------------------------------------------
 export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}$OVERRIDES"
 LOG="$LOGDIR/minecraft-$(date +%Y%m%d-%H%M%S).log"
-say "starte Minecraft $VERSION (Log: $LOG)"
+say "starte Minecraft $VERSION mit $GRAPHICS (Log: $LOG)"
 cd "$C_GAME"
 
 # Wine übersetzt Tasten über das aktive macOS-Layout, Spiele wollen aber Positionen.
