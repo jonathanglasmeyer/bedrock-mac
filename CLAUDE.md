@@ -8,6 +8,7 @@ Minecraft Bedrock (Windows-GDK) auf Apple Silicon: WineGDK x86_64 unter Rosetta,
 - D3DMetal/GPTK-Dateien nie committen, hochladen oder in Artifacts bündeln (Apple-Lizenz). `bedrock.sh` kopiert sie nur lokal in `runtime-d3dmetal`.
 - Unter `~/Games/bedrock-mac` nichts löschen: `data` (Welten), `runtime*`, `prefix-*`, `game`. Runtime-Wechsel per `mv runtime runtime-old-<run-id>`, Run-ID steht in `runtime/share/bedrock-mac/BUILDINFO`.
 - Remote ist privat (`jonathanglasmeyer`), Push dorthin ist ok.
+- Solo-Projekt: keine PRs oder Feature-Branches, direkt auf `main` committen. Push auf `main` mit Änderungen unter `patches/**` startet den Runtime-Build.
 
 ## Build
 
